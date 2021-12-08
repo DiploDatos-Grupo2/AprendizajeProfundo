@@ -20,18 +20,20 @@ logging.basicConfig(
     format="%(asctime)s: %(levelname)s - %(message)s",
     level=logging.INFO
 )
-
-
-class MLPClassifier(nn.Module):
-    def __init__(self,
-                 pretrained_embeddings_path,
+# Para crear este modelo tomamos la clase MLPClassifier elaborada en la materia y cambiamos su nombre, también la estructura de la red.
+# Para la estructura de la red tomamos de base la utilizada en el IMDb classifier
+class CNNClassifier(nn.Module):
+    def __init__(self, 
+                 pretrained_embeddings_path, 
                  token_to_index,
+                 filters_length,
                  n_labels,
                  hidden_layers=[256, 128],
-                 dropout=0.3,
-                 vector_size=300,
+                 vector_size=50, 
+                 filters_count=200,
                  freeze_embedings=True):
         super().__init__()
+        
         with gzip.open(token_to_index, "rt") as fh:
             token_to_index = json.load(fh)
         embeddings_matrix = torch.randn(len(token_to_index), vector_size)
@@ -46,28 +48,28 @@ class MLPClassifier(nn.Module):
         self.embeddings = nn.Embedding.from_pretrained(embeddings_matrix,
                                                        freeze=freeze_embedings,
                                                        padding_idx=0)
-        self.hidden_layers = [
-            nn.Linear(vector_size, hidden_layers[0])
-        ]
-        for input_size, output_size in zip(hidden_layers[:-1], hidden_layers[1:]):
-            self.hidden_layers.append(
-                nn.Linear(input_size, output_size)
+        
+        self.convs = []
+        for filter_lenght in filters_length:
+            self.convs.append(
+                nn.Conv1d(vector_size, filters_count, filter_lenght)
             )
-        self.dropout = dropout
-        self.hidden_layers = nn.ModuleList(self.hidden_layers)
+        self.convs = nn.ModuleList(self.convs)
+        self.fc = nn.Linear(filters_count * len(filters_length), 128)
         self.output = nn.Linear(hidden_layers[-1], n_labels)
         self.vector_size = vector_size
-
+    
+    @staticmethod
+    def conv_global_max_pool(x, conv):
+        return F.relu(conv(x).transpose(1, 2).max(1)[0])
+    
     def forward(self, x):
-        x = self.embeddings(x)
-        x = torch.mean(x, dim=1)
-        for layer in self.hidden_layers:
-            x = F.relu(layer(x))
-            if self.dropout:
-                x = F.dropout(x, self.dropout)
-        x = self.output(x)
+        x = self.embeddings(x).transpose(1, 2)  # Conv1d takes (batch, channel, seq_len)
+        x = [self.conv_global_max_pool(x, conv) for conv in self.convs]
+        x = torch.cat(x, dim=1)
+        x = F.relu(self.fc(x))
+        x = torch.sigmoid(self.output(x))
         return x
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -104,6 +106,22 @@ if __name__ == "__main__":
                         help="Number of epochs",
                         default=3,
                         type=int)
+    # Agregamos estos argumentos para poder pasarselos a run.sh directamente y no tener que estar modificando este archivo
+    
+    parser.add_argument("--learning_rate",
+                        help="learning rate", 
+                        default=0.1,
+                        type=float)
+    parser.add_argument("--batch_size",
+                        help="batch size",
+                        default=128,
+                        type=int)
+    parser.add_argument("--random_buffer_size",
+                        help="random buffer size",
+                        default=2048,
+                        type=int)
+    
+    
 
     args = parser.parse_args()
 
@@ -120,7 +138,7 @@ if __name__ == "__main__":
     )
     train_loader = DataLoader(
         train_dataset,
-        batch_size=128,  # This can be a hyperparameter
+        batch_size=args.batch_size,  # This can be a hyperparameter
         shuffle=False,
         collate_fn=pad_sequences,
         drop_last=False
@@ -134,7 +152,7 @@ if __name__ == "__main__":
         )
         validation_loader = DataLoader(
             validation_dataset,
-            batch_size=128,
+            batch_size=args.batch_size,
             shuffle=False,
             collate_fn=pad_sequences,
             drop_last=False
@@ -166,32 +184,43 @@ if __name__ == "__main__":
         logging.info("Starting experiment")
         # Log all relevent hyperparameters
         mlflow.log_params({
-            "model_type": "Multilayer Perceptron",
+            "model_type": "Convolutional Neural Network",
             "embeddings": args.pretrained_embeddings,
             "hidden_layers": args.hidden_layers,
             "dropout": args.dropout,
             "embeddings_size": args.embeddings_size,
-            "epochs": args.epochs
+            "epochs": args.epochs,
+            "learning_rate": args.learning_rate
         })
         device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
         logging.info("Building classifier")
-        model = MLPClassifier(
+
+        model = CNNClassifier(
             pretrained_embeddings_path=args.pretrained_embeddings,
             token_to_index=args.token_to_index,
             n_labels=train_dataset.n_labels,
             hidden_layers=args.hidden_layers,
-            dropout=args.dropout,
             vector_size=args.embeddings_size,
+            filters_length =[4, 6, 8], 
+            filters_count=200,
             freeze_embedings=True  # This can be a hyperparameter
         )
         model = model.to(device)
-        loss = nn.CrossEntropyLoss()
+        loss = nn.MultiMarginLoss(p=1, margin=1.0, weight=None, size_average=None, reduce=None, reduction='mean')
+
         optimizer = optim.Adam(
             model.parameters(),
-            lr=1e-3,  # This can be a hyperparameter
-            weight_decay=1e-5  # This can be a hyperparameter
+            lr=args.learning_rate,  
+            weight_decay=1e-4  
         )
+        
+        # optimizer = optim.SGD(
+        #     model.parameters(), 
+        #     lr=0.01, 
+        #     momentum=0.9
+        # )
+
 
         logging.info("Training classifier")
         for epoch in trange(args.epochs):
