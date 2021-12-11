@@ -223,7 +223,7 @@ if __name__ == '__main__':
         logging.info('Starting experiment')
         # Log all relevent hyperparameters
         mlflow.log_params({
-            'model_type': 'Baseline_RNN',
+            'model_type': 'Recurrent Neural Network',
             'embeddings': args.pretrained_embeddings,
             'hidden_layers': args.hidden_layers,
             'dropout': args.dropout,

@@ -93,7 +93,7 @@ if __name__ == "__main__":
                         default=300,
                         help="Size of the vectors.",
                         type=int)
-    parser.add_argument("--hidden-layers",
+    parser.add_argument("--hidden_layers",
                         help="Sizes of the hidden layers of the MLP (can be one or more values)",
                         nargs="+",
                         default=[256, 128],
@@ -106,8 +106,6 @@ if __name__ == "__main__":
                         help="Number of epochs",
                         default=3,
                         type=int)
-    # Agregamos estos argumentos para poder pasarselos a run.sh directamente y no tener que estar modificando este archivo
-    
     parser.add_argument("--learning_rate",
                         help="learning rate", 
                         default=0.1,
@@ -120,6 +118,10 @@ if __name__ == "__main__":
                         help="random buffer size",
                         default=2048,
                         type=int)
+    # Optimizer
+    parser.add_argument("--optimizer_type",
+                        help="optimizer type",
+                        default='Adam')
     
     
 
@@ -190,7 +192,10 @@ if __name__ == "__main__":
             "dropout": args.dropout,
             "embeddings_size": args.embeddings_size,
             "epochs": args.epochs,
-            "learning_rate": args.learning_rate
+            "learning_rate": args.learning_rate,
+            'batch_size': args.batch_size,
+            'random_buffer_size': args.random_buffer_size,
+            "optimizer_type": args.optimizer_type
         })
         device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
@@ -209,17 +214,19 @@ if __name__ == "__main__":
         model = model.to(device)
         loss = nn.MultiMarginLoss(p=1, margin=1.0, weight=None, size_average=None, reduce=None, reduction='mean')
 
-        optimizer = optim.Adam(
-            model.parameters(),
-            lr=args.learning_rate,  
-            weight_decay=1e-4  
-        )
+        if args.optimizer_type == 'Adam':
+            optimizer = optim.Adam(
+                model.parameters(),
+                lr=args.learning_rate,  
+                weight_decay=1e-4  
+            )
         
-        # optimizer = optim.SGD(
-        #     model.parameters(), 
-        #     lr=0.01, 
-        #     momentum=0.9
-        # )
+        if args.optimizer_type == 'SGD':
+            optimizer = optim.SGD(
+                model.parameters(), 
+                lr=args.learning_rate, 
+                momentum=0.9
+            )
 
 
         logging.info("Training classifier")
