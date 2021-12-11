@@ -32,7 +32,7 @@ python -m experiment.mlp \
     --hidden-layers 256 128 \
     --dropout 0.3 \
     --epochs 6
-
+    
 python -m experiment.rnn \
     --train-data ./data/meli-challenge-2019/spanish.train.jsonl.gz \
     --token-to-index ./data/meli-challenge-2019/spanish_token_to_index.json.gz \
@@ -54,7 +54,7 @@ python -m experiment.cnn \
     --hidden_layers 256 128 \
     --dropout 0.5 \
     --epochs 3 \
-    --optimizer_type '''Adam'''
+    --optimizer_type '''Adam'''   
 
 python -m experiment.cnn \
     --train-data ./data/meli-challenge-2019/spanish.train.jsonl.gz \
@@ -63,7 +63,7 @@ python -m experiment.cnn \
     --language spanish \
     --validation-data ./data/meli-challenge-2019/spanish.validation.jsonl.gz \
     --embeddings-size 300 \
-    --hidden-layers 256 128 \
+    --hidden_layers 256 128 \
     --dropout 0.3 \
     --epochs 3 \
     --optimizer_type '''SGD'''
